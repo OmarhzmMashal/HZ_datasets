@@ -20,12 +20,12 @@ from sklearn.decomposition import KernelPCA
 
 # calculate the kl divergence
 def kl_divergence(p, q):
-    l=[]
+    terms=[]
     for i in range(len(p)):
         if p[i] == 0: p[i] = 1e-100
         if q[i] == 0: q[i] = 1e-100
-        l.append(p[i] * np.log(p[i]/q[i]))
-    return sum(l)
+        terms.append(p[i] * np.log(p[i]/q[i]))
+    return sum(terms)
 
 # calculate the js divergence
 def js_divergence(p, q):
