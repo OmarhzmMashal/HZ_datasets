@@ -20,12 +20,12 @@ from sklearn.decomposition import KernelPCA
 
 # calculate the kl divergence
 def kl_divergence(p, q):
-    terms=[]
+    l=[]
     for i in range(len(p)):
         if p[i] == 0: p[i] = 1e-100
         if q[i] == 0: q[i] = 1e-100
-        terms.append(p[i] * np.log(p[i]/q[i]))
-    return sum(terms)
+        l.append(p[i] * np.log(p[i]/q[i]))
+    return sum(l)
 
 # calculate the js divergence
 def js_divergence(p, q):
@@ -48,10 +48,13 @@ for i in tqdm(range(0,18)):
         file = uproot.open(os.getcwd()+f'{path_to_data}/hqq_train/_{i}.root')
         tree = file['deepntuplizer/tree']
         if HQQ_df is None:
+            ind=0
             HQQ_df = ak.to_pandas(tree.arrays())[features]
         else:
             new = ak.to_pandas(tree.arrays())[features]
-            HQQ_df = pd.concat((HQQ_df,new), axis=0)
+            new.index.set_levels(new.index.levels[0] + (ind+1) * (20000),0,inplace=True)
+            HQQ_df = pd.concat((HQQ_df,new), axis=0, levels=0).sort_index(axis=0)
+            ind+=1
     except:
         pass
 
@@ -61,10 +64,13 @@ for i in tqdm(range(0,18)):
         file = uproot.open(os.getcwd()+f'{path_to_data}/hcc_train/_{i}.root')
         tree = file['deepntuplizer/tree']
         if HCC_df is None:
+            ind=0
             HCC_df = ak.to_pandas(tree.arrays())[features]
         else:
             new = ak.to_pandas(tree.arrays())[features]
+            new.index.set_levels(new.index.levels[0] + (ind+1) * (20000),0,inplace=True)
             HCC_df = pd.concat((HCC_df,new), axis=0)
+            ind+=1
     except:
         pass
 
@@ -74,10 +80,13 @@ for i in tqdm(range(0,18)):
         file = uproot.open(os.getcwd()+f'{path_to_data}/zqq_train/_{i}.root')
         tree = file['deepntuplizer/tree']
         if ZQQ_df is None:
+            ind=0
             ZQQ_df = ak.to_pandas(tree.arrays())[features]
         else:
             new = ak.to_pandas(tree.arrays())[features]
+            new.index.set_levels(new.index.levels[0] + (ind+1) * (20000),0,inplace=True)
             ZQQ_df = pd.concat((ZQQ_df,new), axis=0)
+            ind+=1
     except:
         pass
 
@@ -86,17 +95,71 @@ for i in tqdm(range(0,18)):
         file = uproot.open(os.getcwd()+f'{path_to_data}/zcc_train/_{i}.root')
         tree = file['deepntuplizer/tree']
         if ZCC_df is None:
+            ind=0
             ZCC_df = ak.to_pandas(tree.arrays())[features]
         else:
             new = ak.to_pandas(tree.arrays())[features]
+            new.index.set_levels(new.index.levels[0] + (ind+1) * (20000),0,inplace=True)
             ZCC_df = pd.concat((ZCC_df,new), axis=0)
+            ind+=1
     except:
         pass
 
 
+
+class CreatGraph:
+    def __init__(self, jet_df, k=7):
+        self.prts_crds = np.array(jet_df[coords])
+        self.prts_fts = np.array(jet_df[features])
+        self.num_particles = len(self.prts_fts)
+        self.k = k
+
+    def get_k_nearest(self, point_source):
+        dists = []
+        dists = [np.sqrt(np.sum(np.square(point_source-point_target))) for point_target in self.prts_crds]
+        nearest_k_idx = np.argsort(dists)[:self.k+1] # adding 1 becsuse the first one will be the point itself (self-loop)
+        nearest_k_idx = nearest_k_idx[1:]
+        return nearest_k_idx
+
+    def get_edge_idx(self):
+        edge_idx = []
+        for source_idx, point_source in tqdm(enumerate(self.prts_crds)):
+            nearest_k_idx = self.get_k_nearest(point_source)
+            for target_idx in nearest_k_idx:
+                pair = [source_idx, target_idx]
+                edge_idx.append(pair)
+        return np.array(edge_idx)
+
+    def plot_graph(self, k=7):
+
+        # construct edges knn
+        edge_idx = self.get_edge_idx()
+
+        # plot graph relative to 2D coords
+        graph_locs_idx = {}
+        for i in range(self.num_particles):
+            graph_locs_idx[i] = (self.prts_crds[i,0], self.prts_crds[i,1])
+
+        # plot graph
+        graph = Data(x=torch.Tensor(self.prts_fts), edge_index=torch.Tensor(edge_idx).t().contiguous())
+        g = py_utils.to_networkx(graph, to_undirected=True, remove_self_loops= True)
+        #pz=[p[0]*1e2 for p in prts_fts]
+
+        nx.draw(g, graph_locs_idx, node_color='red', node_size=10)
+        plt.savefig("graph.png")
+        plt.show()
+
+
+# create a graph with nearest neighbours
+jet_idx=30 # get a jet
+jet_df = HCC_df.loc[(jet_idx,)]
+graph = CreatGraph(jet_df, k=7)
+graph.plot_graph()
+
+
 # averaging the distribution for all jets
-num_bins = 10
-num_jets = 10
+num_bins = 100
+num_jets = 100
 H_COLOR = "navy"
 Z_COLOR = "red"
 plt.rcParams.update({'font.size': 20})
